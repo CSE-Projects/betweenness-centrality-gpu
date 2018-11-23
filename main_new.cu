@@ -9,18 +9,10 @@
 using namespace std;
 
 __global__
-// void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *R, const int *C, int *Q, int *Q2, int *S, int *endpoints, unsigned long long *sigma, int *d, float *delta, int *next_source) {
-void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *R, const int *C, int *Q, int *Q2, int *S, int *endpoints, unsigned long long *sigma, int *d, float *delta, int *next_source, size_t pitch_d, size_t pitch_sigma, size_t pitch_delta, size_t pitch_Q, size_t pitch_Q2, size_t pitch_S, size_t pitch_endpoints) {
-
-    // why not shared
-    // unsigned long long *sigma_row = (unsigned long long*)((char*)sigma + blockIdx.x * (sizeof(unsigned long long)*nodes));
-    // float *delta_row = (float*)((char*)delta + blockIdx.x * (sizeof(float)*nodes));
-    // int *d_row = (int*)((char*)d + blockIdx.x * (sizeof(int)*nodes));
-    int *d_row = (int*)((char*)d + blockIdx.x*pitch_d);
-	unsigned long long *sigma_row = (unsigned long long*)((char*)sigma + blockIdx.x*pitch_sigma);
-	float *delta_row = (float*)((char*)delta + blockIdx.x*pitch_delta);
-    printf ("Thread number %d\n", threadIdx.x);
-
+void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *R, const int *C, int *Q, int *Q2, int *S, int *endpoints, unsigned long long *sigma, int *d, float *delta, int *next_source) {
+    __shared__ int *d_row;
+	__shared__ unsigned long long *sigma_row;
+	__shared__ float *delta_row;
     __shared__ int *Q_row;
 	__shared__ int *Q2_row;
 	__shared__ int *S_row;
@@ -33,14 +25,12 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
     if (j == 0) {
         ind = blockIdx.x;
         i = ind;
-        // Q_row = (int*)((char*)Q + blockIdx.x * (sizeof(int)*nodes));
-        // Q2_row = (int*)((char*)Q2 + blockIdx.x * (sizeof(int)*nodes));
-        // S_row = (int*)((char*)S + blockIdx.x * (sizeof(int)*nodes));
-        // endpoints_row = (int*)((char*)endpoints + blockIdx.x * (sizeof(int)*nodes));
-        Q_row = (int*)((char*)Q + blockIdx.x*pitch_Q);
-        Q2_row = (int*)((char*)Q2 + blockIdx.x*pitch_Q2);
-        S_row = (int*)((char*)S + blockIdx.x*pitch_S);
-        endpoints_row = (int*)((char*)endpoints + blockIdx.x*pitch_endpoints);
+        Q_row = (Q + blockIdx.x);
+        Q2_row = (Q2 + blockIdx.x);
+        S_row = (S + blockIdx.x);
+        endpoints_row = (endpoints + blockIdx.x);
+        delta_row = (delta + blockIdx.x);
+        sigma_row = (sigma + blockIdx.x);
     }
     __syncthreads();
 
@@ -63,9 +53,8 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
         __shared__ int Q_len;
         __shared__ int Q2_len;
         __shared__ int S_len;
-        __shared__ int current_depth; 
+        __shared__ int depth; 
         __shared__ int endpoints_len;
-        __shared__ bool sp_calc_done;
 
 		if(j == 0)
 		{
@@ -77,20 +66,12 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
 			endpoints_row[0] = 0;
 			endpoints_row[1] = 1;
 			endpoints_len = 2;
-			current_depth = 0;
-			sp_calc_done = false;
+			depth = 0;
 		}
         __syncthreads();
 
         while(1) {
-            __shared__ int next_index;
-            if(j == 0) {
-                next_index = blockDim.x;
-            }
-            __syncthreads();
-            
-            int k = threadIdx.x;
-            while(k < Q_len) {
+            for(int k=threadIdx.x; k<Q_len; k+=blockDim.x) {
                 int v = Q_row[k];
                 for(int r = R[v]; r < R[v+1]; r++) {
                     int w = C[r];
@@ -103,7 +84,6 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
                         atomicAdd(&sigma_row[w], sigma_row[v]);
                     }
                 }
-                k = atomicAdd(&next_index, 1);
             }
             __syncthreads();
 
@@ -122,20 +102,19 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
                     Q_len = Q2_len;
                     S_len += Q2_len;
                     Q2_len = 0;
-                    current_depth++;
                 }
                 __syncthreads();
             }
         }
 
         if(j == 0) {
-            current_depth = d_row[S_row[S_len-1]] - 1;
+            depth = d_row[S_row[S_len-1]] - 1;
         }
         __syncthreads();
         
         //Dependency Accumulation
-        while(current_depth > 0) {
-            for(int kk=threadIdx.x + endpoints_row[current_depth]; kk < endpoints_row[current_depth+1]; kk += blockDim.x)
+        while(depth > 0) {
+            for(int kk=threadIdx.x + endpoints_row[depth]; kk < endpoints_row[depth+1]; kk += blockDim.x)
             {
                 int w = S_row[kk];
                 float dsw = 0;
@@ -153,16 +132,16 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
             __syncthreads();
             if(j == 0)
             {
-                current_depth--;
+                depth--;
             }
-            __syncthreads();
-        }
-        
-        for(int kk = threadIdx.x; kk < nodes; kk += blockDim.x) {
-            atomicAdd(&bc[kk], delta_row[kk]);
         }
         
         __syncthreads();
+        for(int kk = threadIdx.x; kk < nodes; kk += blockDim.x) {
+            atomicAdd(&bc[kk], delta_row[kk]);
+        }
+        __syncthreads();
+        
         if(j == 0) {
             ind = atomicAdd(next_source, 1);
             i = ind;
@@ -223,25 +202,19 @@ int main () {
 	size_t pitch_d, pitch_sigma, pitch_delta, pitch_Q, pitch_Q2, pitch_S, pitch_endpoints;
 
     int *next_source = new int;
-    next_source[0] = 1;
+    next_source[0] = 5;
 
     cudaMalloc((void**)&d_bc, sizeof(float) * nodes);
     cudaMalloc((void**)&d_V, sizeof(int) * (nodes + 1));
     cudaMalloc((void**)&d_E, sizeof(int) * (2*edges));
-    // cudaMalloc((void**)&d_Q, sizeof(int) * nodes * next_source[0]);
-    // cudaMalloc((void**)&d_Q2, sizeof(int) * nodes * next_source[0]);
-    // cudaMalloc((void**)&d_S, sizeof(int) * nodes * next_source[0]);
-    // cudaMalloc((void**)&d_endpoints, sizeof(int) * (nodes + 1) * next_source[0]);
-    // cudaMalloc((void**)&d_sigma, sizeof(unsigned long long) * nodes * next_source[0]);
-    // cudaMalloc((void**)&d_d, sizeof(int) * nodes * next_source[0]);
-    // cudaMalloc((void**)&d_delta, sizeof(float) * nodes* next_source[0]);
-    cudaMallocPitch((void**)&d_Q, &pitch_Q, sizeof(int) * nodes, next_source[0]);
-    cudaMallocPitch((void**)&d_Q2, &pitch_Q2,sizeof(int) * nodes, next_source[0]);
-    cudaMallocPitch((void**)&d_S, &pitch_S,sizeof(int) * nodes, next_source[0]);
-    cudaMallocPitch((void**)&d_endpoints, &pitch_endpoints,sizeof(int) * (nodes + 1), next_source[0]);
-    cudaMallocPitch((void**)&d_sigma, &pitch_sigma, sizeof(unsigned long long) * nodes, next_source[0]);
-    cudaMallocPitch((void**)&d_d, &pitch_d, sizeof(int) * nodes, next_source[0]);
-    cudaMallocPitch((void**)&d_delta, &pitch_delta, sizeof(float) * nodes, next_source[0]);
+    cudaMalloc((void**)&d_Q, sizeof(int) * nodes * next_source[0]);
+    cudaMalloc((void**)&d_Q2, sizeof(int) * nodes * next_source[0]);
+    cudaMalloc((void**)&d_S, sizeof(int) * nodes * next_source[0]);
+    cudaMalloc((void**)&d_endpoints, sizeof(int) * (nodes + 1) * next_source[0]);
+    cudaMalloc((void**)&d_sigma, sizeof(unsigned long long) * nodes * next_source[0]);
+    cudaMalloc((void**)&d_d, sizeof(int) * nodes * next_source[0]);
+    cudaMalloc((void**)&d_delta, sizeof(float) * nodes* next_source[0]);
+
 
     cudaMalloc((void**)&d_next_source, sizeof(int));
     
@@ -259,8 +232,7 @@ int main () {
 	dimBlock.x = 64;
 	dimBlock.y = 1;
 	dimBlock.z = 1;
-    // betweenness_centrality_kernel <<<dimGrid, dimBlock>>> (d_bc, nodes, edges, d_V, d_E, d_Q, d_Q2, d_S, d_endpoints, d_sigma, d_d, d_delta, next_source);
-    betweenness_centrality_kernel <<<dimGrid, dimBlock>>> (d_bc, nodes, edges, d_V, d_E, d_Q, d_Q2, d_S, d_endpoints, d_sigma, d_d, d_delta, d_next_source, pitch_d, pitch_sigma, pitch_delta, pitch_Q, pitch_Q2, pitch_S, pitch_endpoints);
+    betweenness_centrality_kernel <<<dimGrid, dimBlock>>> (d_bc, nodes, edges, d_V, d_E, d_Q, d_Q2, d_S, d_endpoints, d_sigma, d_d, d_delta, d_next_source);
 
     cudaMemcpy(bc, d_bc, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     
