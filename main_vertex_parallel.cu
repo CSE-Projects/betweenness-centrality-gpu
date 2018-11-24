@@ -18,8 +18,6 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
     int idx = threadIdx.x;
     if (idx == 0) {
         s = 0;
-        end_pos = 1;
-        end_point[0] = 0;
     }
     __syncthreads();
     
@@ -46,6 +44,8 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
             done = false;
             current_depth = 0;
             position = 0;
+            end_pos = 1;
+            end_point[0] = 0;
         }
         __syncthreads();
         
@@ -86,16 +86,28 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
 
         // Parallel Vertex Parallel implementation
    
+        // __syncthreads();
+	if(idx == 0){
+		end_pos-=2;
+		// printf("%d %d %d<--", end_pos, end_point[end_pos], end_point[end_pos+1]);
+		// for(int a1=0;a1<=end_pos+1;++a1) printf("%d-", end_point[a1]);
+		// printf("\n");
+	    // for(int a1=0;a1<nodes;++a1) printf("%d<", S[a1]);
+        // cout<<"\n";
+        // printf("\n");
+	} 
         __syncthreads();
-        // atomicSub(&end_pos,2);
+	//atomicSub(&end_pos,2);
         for(int itr1 = end_pos; itr1 >= 0; --itr1){
-            for(int itr2 = end_point[itr1] + idx; itr2 < end_point[itr1+1]; itr2+=blockDim.x){
+            // __syncthreads();
+		    for(int itr2 = end_point[itr1] + idx; itr2 < end_point[itr1+1]; itr2+=blockDim.x){
                 // S[itr2] is one node
                 for(int itr3 = R[S[itr2]]; itr3 < R[S[itr2] + 1]; ++itr3){
                     int consider = C[itr3];
                     // C[itr3] other node
-                    if(d[consider] == d[S[itr2]]-1){
-                        delta[consider] += ( ((float)sigma[consider]/sigma[S[itr2]]) * ((float)1 + delta[S[itr2]]) ); 
+                    if(d[consider] == d[S[itr2]]+1){
+                        //atomicAdd(&delta[consider], ( ((float)sigma[consider]/sigma[S[itr2]]) * ((float)1 + delta[S[itr2]]) )); 
+                        delta[S[itr2]] += ( ((float)sigma[S[itr2]]/sigma[consider]) * ((float)1 + delta[consider]) );
                     }
                 }
                 if(S[itr2] != s){
@@ -197,7 +209,7 @@ int main () {
     cudaMemcpy(d_bc, bc, sizeof(float) * (nodes), cudaMemcpyHostToDevice);    
     // cudaMemcpy(d_delta, delta, sizeof(float) * (nodes), cudaMemcpyHostToDevice);
     
-    betweenness_centrality_kernel <<<1, 64>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
+    betweenness_centrality_kernel <<<1, 256>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
 
     // cudaMemcpy(d, d_d, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     // cudaMemcpy(sigma, d_sigma, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
