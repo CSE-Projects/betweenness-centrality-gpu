@@ -137,20 +137,22 @@ int main () {
     }
     V[node] = counter;
     
-    cout<<"\n";
-    for (int i = 0; i <= nodes; i++) {
-        cout<<V[i]<<" ";
-    }
-    cout<<"\n";
-    for (int i = 0; i < 2 * edges; ++i) {
-        cout<<E[i]<<" ";
-    }
-    cout<<"\n";
+    // cout<<"\n";
+    // for (int i = 0; i <= nodes; i++) {
+    //     cout<<V[i]<<" ";
+    // }
+    // cout<<"\n";
+    // for (int i = 0; i < 2 * edges; ++i) {
+    //     cout<<E[i]<<" ";
+    // }
+    // cout<<"\n";
 
     int *d = new int[nodes];
     int *sigma = new int[nodes];
     float *delta = new float[nodes];
     float *bc = new float[nodes];
+
+    memset(bc,0,sizeof(bc));
 
     int *d_d, *d_sigma, *d_V, *d_E, *d_S, *d_end_point;
     float *d_delta, *d_bc;
@@ -167,14 +169,14 @@ int main () {
     cudaMemcpy(d_V, V, sizeof(int) * (nodes+1), cudaMemcpyHostToDevice);
     cudaMemcpy(d_E, E, sizeof(int) * (2*edges), cudaMemcpyHostToDevice);
     cudaMemcpy(d_bc, bc, sizeof(float) * (nodes), cudaMemcpyHostToDevice);    
-    cudaMemcpy(d_delta, delta, sizeof(float) * (nodes), cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_delta, delta, sizeof(float) * (nodes), cudaMemcpyHostToDevice);
     
     betweenness_centrality_kernel <<<1, 64>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
 
     // cudaMemcpy(d, d_d, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     // cudaMemcpy(sigma, d_sigma, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     cudaMemcpy(bc, d_bc, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(delta, d_delta, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(delta, d_delta, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
 
     cout<<"Res: \n";
     for (int i = 0; i < nodes; i++) {
@@ -190,7 +192,15 @@ int main () {
     cudaFree(d_E);
     cudaFree(d_delta);
     cudaFree(d_bc);
+    cudaFree(d_S);
+    cudaFree(d_end_point);
 
+    free(E);
+    free(V);
+    free(d);
+    free(sigma);
+    free(delta);
+    free(bc);
 
     return 0;
 }
