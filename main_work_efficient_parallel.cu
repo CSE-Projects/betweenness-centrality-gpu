@@ -263,7 +263,11 @@ int main () {
 
     // to get next source vertex after a block finishes computing the BC using the current source 
     int *next_source = new int;
-    next_source[0] = 5;
+    // set to number of SM as each block is assigned to 1 SM
+    // next_source[0] = 5;
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop,0);
+    next_source[0] = prop.multiProcessorCount;
     
     // Allocate space on device
     cudaMalloc((void**)&d_bc, sizeof(float) * nodes);
@@ -289,37 +293,44 @@ int main () {
 
     // ================================ KERNEL PARAMS AND CALL ====================================
     // Grid parameters
-	dim3 dimBlock, dimGrid;
-	dimGrid.x = 5;
-	dimGrid.y = 1;
-	dimGrid.z = 1;
+	dim3 cudaGrid, cudaBlock;
+	cudaGrid.x = next_source[0];cudaGrid.y = 1;cudaGrid.z = 1;
     // Block parameters
-	dimBlock.x = 64;
-	dimBlock.y = 1;
-	dimBlock.z = 1;
+	cudaBlock.x = 64;cudaBlock.y = 1;cudaBlock.z = 1;
     
-    clock_t begin = clock();
-    // kernel call
-    betweenness_centrality_kernel <<<dimGrid, dimBlock>>> (d_bc, nodes, edges, d_V, d_E, d_Queue1, d_Queue2, d_Depth_Nodes, d_Depth_Points, d_sigma, d_distance, d_delta, d_next_source, scale_distance, scale_sigma, scale_delta, scale_Q1, scale_Q2, scale_depthnodes, scale_depthpoints);
-    clock_t end = clock();
+    float elapsed_time;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
+    // KERNEL CALL
+    betweenness_centrality_kernel <<<cudaGrid, cudaBlock>>> (d_bc, nodes, edges, d_V, d_E, d_Queue1, d_Queue2, d_Depth_Nodes, d_Depth_Points, d_sigma, d_distance, d_delta, d_next_source, scale_distance, scale_sigma, scale_delta, scale_Q1, scale_Q2, scale_depthnodes, scale_depthpoints);
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed_time, start, stop);
 
     // ================================ RESULT ====================================
     cudaMemcpy(bc, d_bc, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     
     cout<<"Result: \n";
-    for (int i = 0; i < nodes; i++) {
-        cout<<"Node: "<<i<<" BC: "<<fixed<<setprecision(6)<<bc[i]/2.0<<"\n";
-    }
+    // for (int i = 0; i < nodes; i++) {
+    //     cout<<"Node: "<<i<<" BC: "<<fixed<<setprecision(6)<<bc[i]/2.0<<"\n";
+    // }
     cout<<"\n";
     // Print the time for execution
-    double elapsed_time = double(end - begin) / CLOCKS_PER_SEC;
-    cout<<"Execution time: "<<elapsed_time<<endl;
+    cout<<"Execution time: "<<elapsed_time/1000.0<<endl;
 
     // Maximum element using thrust min reduction
-    thrust::device_vector<float> device_bc_max(bc, bc + nodes);
-    thrust::device_ptr<float> ptr = device_bc_max.data();
-    int max_index = thrust::max_element(ptr, ptr + nodes) - ptr;
-    cout<<"Max BC value: "<<device_bc_max[max_index]/2.0<<endl;
+    // thrust::device_vector<float> device_bc_max(bc, bc + nodes);
+    // thrust::device_ptr<float> ptr = device_bc_max.data();
+    // int max_index = thrust::max_element(ptr, ptr + nodes) - ptr;
+    // cout<<"Max BC value: "<<device_bc_max[max_index]/2.0<<endl;
+    // Maximum BC value
+    float max_bc = 0.0;
+    for (int i = 0; i < nodes; ++i) {
+        max_bc = (bc[i] > max_bc) ? bc[i] : max_bc;
+    }
+    cout<<"Max BC value: "<<max_bc/2.0<<endl;
 
     // ================================ MEMORY RELEASE ====================================
     // free device variable
@@ -334,6 +345,7 @@ int main () {
     cudaFree(d_distance);
     cudaFree(d_delta);
     cudaFree(d_next_source);
+    // thrust::device_free(device_bc_max);
     // free host variables
     free(V);
     free(E);

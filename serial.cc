@@ -122,10 +122,10 @@ int main() {
 
     // ===================================================== RESULTS ===================================================
     // BC values for all nodes
-	for (int i = 0; i < nodes; ++i) {
-        cout<<"Node: "<<i<<"  BC: ";
-        cout<<fixed<<setprecision(6)<<cb[i]/2.0<<"\n";
-    }
+	// for (int i = 0; i < nodes; ++i) {
+    //     cout<<"Node: "<<i<<"  BC: ";
+    //     cout<<fixed<<setprecision(6)<<cb[i]/2.0<<"\n";
+    // }
     cout<<"\n";
 
     // Print the time for execution
