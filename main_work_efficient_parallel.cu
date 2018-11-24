@@ -1,3 +1,8 @@
+/*
+Authors
+- Dibyadarshan Hota 16CO154
+- Omkar Prabhu 16CO233
+*/
 #include <iostream>
 #include <string>
 #include <sstream>
