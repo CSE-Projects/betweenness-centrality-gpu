@@ -8,25 +8,31 @@
 
 using namespace std;
 
+/**
+ * Kernel for computing Betweenness Centrality
+ * res: Stored in global memory variable bc
+ */
 __global__
 void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigma, float *delta, float *bc, int *S, int *end_point) {
-    
+    // ================================== VARIABLES INIT ============================================
+    // initial variables
     __shared__ int position;
     __shared__ int s;
     __shared__ int end_pos;
     
+    // source variable initially 0
     int idx = threadIdx.x;
     if (idx == 0) {
         s = 0;
     }
     __syncthreads();
     
+    // move through all nodes
     while (s < nodes) {
         __syncthreads();
         
-	//Initialize d and sigma
+        // ============================== distance, delta and sigma INIT ============================================
         for(int v=idx; v<nodes; v+=blockDim.x) {
-            
             if(v == s) {
                 d[v] = 0;
                 sigma[v] = 1;
@@ -49,26 +55,28 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
         }
         __syncthreads();
         
-        // SP Calc 
+        // ============================== Shortest Path Calculation using curr source ======================
+        // ============================== Using Vertex Parallel ============================================  
         while(!done)
-        {
+        {   // wait
             __syncthreads();
             done = true;
             __syncthreads();
-            
+            // move through modes
             for(int v=idx; v<nodes; v+=blockDim.x) {
                 if(d[v] == current_depth) {
-                    
-                    
+                    // add to S 
                     int t = atomicAdd(&position,1);
                     S[t] = v;
-
+                    // move through neighbours
                     for(int r=R[v]; r<R[v+1]; r++) {
                         int w = C[r];
+                        // if not visited
                         if(d[w] == INT_MAX) {
                             d[w] = d[v] + 1;
                             done = false;
                         }
+                        // add number of paths
                         if(d[w] == (d[v] + 1)) {
                             atomicAdd(&sigma[w],sigma[v]);
                         }
@@ -76,6 +84,7 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
                 }
             }
             __syncthreads();
+            // increment variables
             if(idx == 0){
                 current_depth++;
                 end_point[end_pos] = position;
@@ -84,20 +93,21 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
         }
 
 
-        // Parallel Vertex Parallel implementation
-   
+        // ============================== BC calculation using Brande's Algorithm ============================================
+
+        // Parallel Vertex Parallel implementation   
         // __syncthreads();
-	if(idx == 0){
-		end_pos-=2;
-		// printf("%d %d %d<--", end_pos, end_point[end_pos], end_point[end_pos+1]);
-		// for(int a1=0;a1<=end_pos+1;++a1) printf("%d-", end_point[a1]);
-		// printf("\n");
-	    // for(int a1=0;a1<nodes;++a1) printf("%d<", S[a1]);
-        // cout<<"\n";
-        // printf("\n");
-	} 
+        if(idx == 0){
+            end_pos-=2;
+            // printf("%d %d %d<--", end_pos, end_point[end_pos], end_point[end_pos+1]);
+            // for(int a1=0;a1<=end_pos+1;++a1) printf("%d-", end_point[a1]);
+            // printf("\n");
+            // for(int a1=0;a1<nodes;++a1) printf("%d<", S[a1]);
+            // cout<<"\n";
+            // printf("\n");
+        } 
         __syncthreads();
-	//atomicSub(&end_pos,2);
+	    //atomicSub(&end_pos,2);
         for(int itr1 = end_pos; itr1 >= 0; --itr1){
             // __syncthreads();
 		    for(int itr2 = end_point[itr1] + idx; itr2 < end_point[itr1+1]; itr2+=blockDim.x){
@@ -135,7 +145,7 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
         //     }
         // }
 
-
+        // increment 
         __syncthreads();
         if (idx == 0) {
             s += 1;
@@ -145,9 +155,12 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
 }
 
 
-
+/**
+ * Main function
+ */
 int main () {
 
+    // ================================ READ INPUT AND MAKE Compressed Adjancency List ====================================
     // freopen("graph", "r", stdin);
 
     // nodes and edges
@@ -157,7 +170,7 @@ int main () {
     // compressed adjancency list
     int * V = new int[nodes + 1];
     int * E = new int[2 * edges];
-
+    // read graph data in CSR format 
     string line;
     int node = 0;
     int counter = 0;
@@ -185,6 +198,7 @@ int main () {
     // }
     // cout<<"\n";
 
+    // ================================ DECLARE AND INIT VARIABLES ====================================
     int *d = new int[nodes];
     int *sigma = new int[nodes];
     float *delta = new float[nodes];
@@ -209,21 +223,42 @@ int main () {
     cudaMemcpy(d_bc, bc, sizeof(float) * (nodes), cudaMemcpyHostToDevice);    
     // cudaMemcpy(d_delta, delta, sizeof(float) * (nodes), cudaMemcpyHostToDevice);
     
-    betweenness_centrality_kernel <<<1, 256>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
+    // ================================ KERNEL PARAMS AND CALL ====================================
+
+    float elapsed_time;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
+    // kernel call
+    betweenness_centrality_kernel <<<1, 1024>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed_time, start, stop);
+
+    // ================================ RESULT ====================================
 
     // cudaMemcpy(d, d_d, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     // cudaMemcpy(sigma, d_sigma, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     cudaMemcpy(bc, d_bc, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
     // cudaMemcpy(delta, d_delta, sizeof(float) * nodes, cudaMemcpyDeviceToHost);
 
-    cout<<"Res: \n";
-    for (int i = 0; i < nodes; i++) {
-        printf("%f ", bc[i]/2.0);
-        // cout<<bc[i];
+    cout<<"Result: \n";
+    // for (int i = 0; i < nodes; i++) {
+    //     cout<<"Node: "<<i<<" BC: "<<fixed<<setprecision(6)<<bc[i]/2.0<<"\n";
+    // }
+    cout<<"\n";
+    // Print the time for execution
+    cout<<"Execution time: "<<elapsed_time/1000.0<<endl;
+
+    // Maximum BC value
+    float max_bc = 0.0;
+    for (int i = 0; i < nodes; ++i) {
+        max_bc = (bc[i] > max_bc) ? bc[i] : max_bc;
     }
-    cout<<endl;
+    cout<<"Max BC value: "<<max_bc/2.0<<endl;
 
-
+    // ================================ MEMORY RELEASE ====================================
     cudaFree(d_sigma);
     cudaFree(d_d);
     cudaFree(d_V);
