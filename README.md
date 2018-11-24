@@ -19,24 +19,26 @@ Betweenness Centrality for large sparse graphs on GPU using CUDA
     $ ./a.out < graph10p4
     ```
 
-3. Parallel Implementation using using Work-efficient Method
+3. Parallel Implementation using using Work-efficient Method(p_imp_1)
     ```
-    $ nvcc p_imp_1.cu
+    $ nvcc main_work_efficient_parallel.cu
     $ ./a.out < graph10p4
     ```
 
-4. Parallel Implementation using Vertex-parallel Method
+4. Parallel Implementation using Vertex-parallel Method (p_imp_2)
     ```
-    $ nvcc p_imp_2.cu
+    $ nvcc main_vertex_parallel.cu
     $ ./a.out < graph10p4
     ```
 
 ## File Structure
-- `p_imp_1.cu` - Parallel Implementation using Work-efficient Method
-- `p_imp_2.cu` - Parallel Implementation using Vertex-parallel Method
+- `main_work_efficient_parallel.cu` or `p_imp_1.cu` - Parallel Implementation using Work-efficient Method
+- `main_vertex_parallel.cu` or `p_imp_2.cu` - Parallel Implementation using Vertex-parallel Method
 - `serial.cc` - Serial implementation
+- `g_generator.cpp` - Random Gaph Generator
 - `input_format/` - Contains sample input format
 - `results/` - Results for test from graph inputs sizes mentioned in Report
+- `parse.py` - Convert 1 to 0 based node index
 
 ## Results and Summary
 Mentioned in the Report
