@@ -1,7 +1,8 @@
 #include <bits/stdc++.h>
 
-#define n_len 100005
-#define e_len 100005
+// Limits for array sizes
+#define n_len 1000005
+#define e_len 1000005
 
 using namespace std;
 
@@ -32,7 +33,8 @@ int main() {
         
 	// vector<long long int> V(nodes+1);
 	// vector<long long int> E(2*edges);
-    // read graph data in CSR format 
+    
+    // Read graph data in CSR format 
     string line;
     long long int node = 0;
     long long int counter = 0;
@@ -66,6 +68,8 @@ int main() {
     // max bc var
     float max_bc = 0.0;
     // ===================================================== MAIN CODE =================================================== 
+    
+    // Timer initialized
     clock_t begin = clock();
 	for(long long int i = 0; i < nodes; ++i) {
 		// stack<long long int> s;
@@ -111,6 +115,9 @@ int main() {
             long long int cons=s.top();
             s.pop();
             long long int upto = p[cons].size();
+            
+            // ============== Using parent's sigma ========================
+                
             for(long long int j = 0; j < upto;++j){
                 delta[p[cons][j]]+=(((float)sigma[p[cons][j]]/sigma[cons])*((float)1+delta[cons]));
             }

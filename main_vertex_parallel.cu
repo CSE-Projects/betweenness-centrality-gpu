@@ -13,12 +13,12 @@ using namespace std;
  * res: Stored in global memory variable bc
  */
 __global__
-void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigma, float *delta, float *bc, int *S, int *end_point) {
+void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigma, float *delta, float *bc, int *reverse_stack, int *finish_limit) {
     // ================================== VARIABLES INIT ============================================
     // initial variables
     __shared__ int position;
     __shared__ int s;
-    __shared__ int end_pos;
+    __shared__ int finish_limit_position;
     
     // source variable initially 0
     int idx = threadIdx.x;
@@ -50,8 +50,8 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
             done = false;
             current_depth = 0;
             position = 0;
-            end_pos = 1;
-            end_point[0] = 0;
+            finish_limit_position = 1;
+            finish_limit[0] = 0;
         }
         __syncthreads();
         
@@ -65,9 +65,9 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
             // move through modes
             for(int v=idx; v<nodes; v+=blockDim.x) {
                 if(d[v] == current_depth) {
-                    // add to S 
+                    // add to reverse_stack 
                     int t = atomicAdd(&position,1);
-                    S[t] = v;
+                    reverse_stack[t] = v;
                     // move through neighbours
                     for(int r=R[v]; r<R[v+1]; r++) {
                         int w = C[r];
@@ -87,8 +87,8 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
             // increment variables
             if(idx == 0){
                 current_depth++;
-                end_point[end_pos] = position;
-                ++end_pos;
+                finish_limit[finish_limit_position] = position;
+                ++finish_limit_position;
             }
         }
 
@@ -98,30 +98,30 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
         // Parallel Vertex Parallel implementation   
         // __syncthreads();
         if(idx == 0){
-            end_pos-=2;
-            // printf("%d %d %d<--", end_pos, end_point[end_pos], end_point[end_pos+1]);
-            // for(int a1=0;a1<=end_pos+1;++a1) printf("%d-", end_point[a1]);
+            finish_limit_position-=2;
+            // printf("%d %d %d<--", finish_limit_position, finish_limit[finish_limit_position], finish_limit[finish_limit_position+1]);
+            // for(int a1=0;a1<=finish_limit_position+1;++a1) printf("%d-", finish_limit[a1]);
             // printf("\n");
-            // for(int a1=0;a1<nodes;++a1) printf("%d<", S[a1]);
+            // for(int a1=0;a1<nodes;++a1) printf("%d<", reverse_stack[a1]);
             // cout<<"\n";
             // printf("\n");
         } 
         __syncthreads();
-	    //atomicSub(&end_pos,2);
-        for(int itr1 = end_pos; itr1 >= 0; --itr1){
+	    //atomicSub(&finish_limit_position,2);
+        for(int itr1 = finish_limit_position; itr1 >= 0; --itr1){
             // __syncthreads();
-		    for(int itr2 = end_point[itr1] + idx; itr2 < end_point[itr1+1]; itr2+=blockDim.x){
-                // S[itr2] is one node
-                for(int itr3 = R[S[itr2]]; itr3 < R[S[itr2] + 1]; ++itr3){
+		    for(int itr2 = finish_limit[itr1] + idx; itr2 < finish_limit[itr1+1]; itr2+=blockDim.x){
+                // reverse_stack[itr2] is one node
+                for(int itr3 = R[reverse_stack[itr2]]; itr3 < R[reverse_stack[itr2] + 1]; ++itr3){
                     int consider = C[itr3];
                     // C[itr3] other node
-                    if(d[consider] == d[S[itr2]]+1){
-                        //atomicAdd(&delta[consider], ( ((float)sigma[consider]/sigma[S[itr2]]) * ((float)1 + delta[S[itr2]]) )); 
-                        delta[S[itr2]] += ( ((float)sigma[S[itr2]]/sigma[consider]) * ((float)1 + delta[consider]) );
+                    if(d[consider] == d[reverse_stack[itr2]]+1){
+                        //atomicAdd(&delta[consider], ( ((float)sigma[consider]/sigma[reverse_stack[itr2]]) * ((float)1 + delta[reverse_stack[itr2]]) )); 
+                        delta[reverse_stack[itr2]] += ( ((float)sigma[reverse_stack[itr2]]/sigma[consider]) * ((float)1 + delta[consider]) );
                     }
                 }
-                if(S[itr2] != s){
-                    bc[S[itr2]] += delta[S[itr2]];
+                if(reverse_stack[itr2] != s){
+                    bc[reverse_stack[itr2]] += delta[reverse_stack[itr2]];
                 }
 
             }
@@ -133,14 +133,14 @@ void betweenness_centrality_kernel (int nodes, int *C, int *R, int *d, int *sigm
         // if(idx == 0){
             
         //     for(int itr1 = nodes - 1; itr1 >= 0; --itr1){
-        //         for(int itr2 = R[S[itr1]]; itr2 < R[S[itr1] + 1]; ++itr2){
+        //         for(int itr2 = R[reverse_stack[itr1]]; itr2 < R[reverse_stack[itr1] + 1]; ++itr2){
         //             int consider = C[itr2];
-        //             if(d[consider] == d[S[itr1]]-1){
-        //                 delta[consider] += ( ((float)sigma[consider]/sigma[S[itr1]]) * ((float)1 + delta[S[itr1]]) ); 
+        //             if(d[consider] == d[reverse_stack[itr1]]-1){
+        //                 delta[consider] += ( ((float)sigma[consider]/sigma[reverse_stack[itr1]]) * ((float)1 + delta[reverse_stack[itr1]]) ); 
         //             }
         //         }
-        //         if(S[itr1] != s){
-        //             bc[S[itr1]] += delta[S[itr1]];
+        //         if(reverse_stack[itr1] != s){
+        //             bc[reverse_stack[itr1]] += delta[reverse_stack[itr1]];
         //         }
         //     }
         // }
@@ -206,13 +206,13 @@ int main () {
 
     memset(bc,0,sizeof(bc));
 
-    int *d_d, *d_sigma, *d_V, *d_E, *d_S, *d_end_point;
+    int *d_d, *d_sigma, *d_V, *d_E, *d_reverse_stack, *d_end_point;
     float *d_delta, *d_bc;
 
     cudaMalloc((void**)&d_d, sizeof(int) * nodes);
     cudaMalloc((void**)&d_end_point, sizeof(int) * (nodes + 1));
     cudaMalloc((void**)&d_sigma, sizeof(int) * nodes);
-    cudaMalloc((void**)&d_S, sizeof(int) * nodes);
+    cudaMalloc((void**)&d_reverse_stack, sizeof(int) * nodes);
     cudaMalloc((void**)&d_V, sizeof(int) * (nodes + 1));
     cudaMalloc((void**)&d_E, sizeof(int) * (2*edges));
     cudaMalloc((void**)&d_delta, sizeof(float) * nodes);
@@ -231,7 +231,7 @@ int main () {
     cudaEventCreate(&stop);
     cudaEventRecord(start, 0);
     // kernel call
-    betweenness_centrality_kernel <<<1, 1024>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_S, d_end_point);
+    betweenness_centrality_kernel <<<1, 1024>>> (nodes, d_E, d_V, d_d, d_sigma, d_delta, d_bc, d_reverse_stack, d_end_point);
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed_time, start, stop);
@@ -265,7 +265,7 @@ int main () {
     cudaFree(d_E);
     cudaFree(d_delta);
     cudaFree(d_bc);
-    cudaFree(d_S);
+    cudaFree(d_reverse_stack);
     cudaFree(d_end_point);
 
     free(E);
