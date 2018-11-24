@@ -19,7 +19,7 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
     int *d_row = (int*)((char*)d + blockIdx.x*pitch_d);
 	unsigned long long *sigma_row = (unsigned long long*)((char*)sigma + blockIdx.x*pitch_sigma);
 	float *delta_row = (float*)((char*)delta + blockIdx.x*pitch_delta);
-    printf ("Thread number %d\n", threadIdx.x);
+    // printf ("Thread number %d\n", threadIdx.x);
 
     __shared__ int *Q_row;
 	__shared__ int *Q2_row;
@@ -41,6 +41,10 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
         Q2_row = (int*)((char*)Q2 + blockIdx.x*pitch_Q2);
         S_row = (int*)((char*)S + blockIdx.x*pitch_S);
         endpoints_row = (int*)((char*)endpoints + blockIdx.x*pitch_endpoints);
+        // for (int i = 0; i < nodes; i++) {
+        //     printf("%d: %d", i, d_row[i]);
+        // }
+        // printf("Block %d I %d", blockIdx, );
     }
     __syncthreads();
 
@@ -65,7 +69,6 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
         __shared__ int S_len;
         __shared__ int current_depth; 
         __shared__ int endpoints_len;
-        __shared__ bool sp_calc_done;
 
 		if(j == 0)
 		{
@@ -78,7 +81,7 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
 			endpoints_row[1] = 1;
 			endpoints_len = 2;
 			current_depth = 0;
-			sp_calc_done = false;
+            printf("Block: %d Root: %d\n", blockIdx.x, i);
 		}
         __syncthreads();
 
@@ -175,7 +178,7 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
 
 int main () {
 
-    freopen("graph", "r", stdin);
+    // freopen("graph", "r", stdin);
     
     // nodes and edges
     int nodes, edges;
@@ -223,7 +226,7 @@ int main () {
 	size_t pitch_d, pitch_sigma, pitch_delta, pitch_Q, pitch_Q2, pitch_S, pitch_endpoints;
 
     int *next_source = new int;
-    next_source[0] = 1;
+    next_source[0] = 5;
 
     cudaMalloc((void**)&d_bc, sizeof(float) * nodes);
     cudaMalloc((void**)&d_V, sizeof(int) * (nodes + 1));

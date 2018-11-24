@@ -1,10 +1,10 @@
 #include <iostream>
-#include <string>
+#include <stdio.h>
 #include <sstream>
+#include <string.h>
 #include <cuda.h>
-#include<stdio.h>
 
-#define ll long long 
+#define ll long long
 
 using namespace std;
 
@@ -31,6 +31,9 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
         endpoints_row = (endpoints + blockIdx.x);
         delta_row = (delta + blockIdx.x);
         sigma_row = (sigma + blockIdx.x);
+        for (int i = 0; i < nodes; i++) {
+            printf("%d: %d", i, d_row[i]);
+        }
     }
     __syncthreads();
 
@@ -108,6 +111,9 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
         }
 
         if(j == 0) {
+            for (int i = 0; i < nodes; i++) {
+                printf("%d: %d", i, d_row[i]);
+            }
             depth = d_row[S_row[S_len-1]] - 1;
         }
         __syncthreads();
@@ -154,7 +160,7 @@ void betweenness_centrality_kernel (float *bc, int nodes, int edges, const int *
 
 int main () {
 
-    freopen("graph", "r", stdin);
+    // freopen("graph", "r", stdin);
     
     // nodes and edges
     int nodes, edges;
@@ -199,7 +205,7 @@ int main () {
     float *d_bc, *d_delta;
     int *d_V, *d_E, *d_d, *d_Q, *d_Q2, *d_S, *d_endpoints, *d_next_source;
     unsigned long long *d_sigma;
-	size_t pitch_d, pitch_sigma, pitch_delta, pitch_Q, pitch_Q2, pitch_S, pitch_endpoints;
+	// size_t pitch_d, pitch_sigma, pitch_delta, pitch_Q, pitch_Q2, pitch_S, pitch_endpoints;
 
     int *next_source = new int;
     next_source[0] = 5;
@@ -238,7 +244,7 @@ int main () {
     
     cout<<"Res: \n";
     for (int i = 0; i < nodes; i++) {
-        cout<<bc[i]<<" ";
+        printf("%f ", bc[i]);
     }
     cout<<endl;
 
