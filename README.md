@@ -48,7 +48,7 @@ Betweenness Centrality for large sparse graphs on GPU using CUDA
 - `input_format/` - Contains sample input format
 
 ## Results and Summary
-Mentioned in the Report
+[Report](https://docs.google.com/document/d/13IBHya_Ssg-kmunpqWjW1x8AytCj7VRjoWAEN_Ipm0Q/edit?usp=sharing)
 
 ## References
 - https://devblogs.nvidia.com/accelerating-graph-betweenness-centrality-cuda/
